@@ -10,8 +10,16 @@ FROM nginx:1.27-alpine
 # docker-entrypoint.d/20-basic-auth.sh.
 RUN apk add --no-cache openssl
 COPY --from=build /app/dist /usr/share/nginx/html
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# templates/*.template are rendered to conf.d/*.conf by nginx's own
+# docker-entrypoint.d/20-envsubst-on-templates.sh before nginx starts, which
+# is how AURUM_BACKEND_HOST/PORT below reach the proxy_pass in the config.
+COPY templates/default.conf.template /etc/nginx/templates/default.conf.template
 COPY docker-entrypoint.d/20-basic-auth.sh /docker-entrypoint.d/20-basic-auth.sh
+# Defaults that make docker-compose's fixed "backend" DNS name keep working
+# unchanged; override per-environment (e.g. Railway's *.railway.internal)
+# via the AURUM_BACKEND_HOST/AURUM_BACKEND_PORT service variables.
+ENV AURUM_BACKEND_HOST=backend \
+    AURUM_BACKEND_PORT=8000
 # sed strips any stray CR: cloned on Windows with core.autocrlf=true the
 # script arrives as CRLF, the kernel reads the shebang as "/bin/sh\r", and
 # nginx dies on boot with "not found" (exit 127). .gitattributes fixes this

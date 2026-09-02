@@ -11,16 +11,24 @@ server {
     # sets below and healthchecks would start failing with 401.
     location = /api/health {
         auth_basic off;
-        proxy_pass http://backend:8000/api/health;
+        proxy_pass http://${AURUM_BACKEND_HOST}:${AURUM_BACKEND_PORT}/api/health;
         proxy_set_header Host $host;
     }
 
-    # Reverse proxy to the FastAPI backend container. basic-auth.conf is
-    # generated at container start (empty if AURUM_BASIC_AUTH_USER/PASSWORD
-    # aren't set, so this is a no-op by default) — see docker-entrypoint.d/.
+    # Reverse proxy to the FastAPI backend container. AURUM_BACKEND_HOST/PORT
+    # default to docker-compose's "backend:8000" (see Dockerfile ENV) but are
+    # overridable per-environment — e.g. on Railway, where the backend lives
+    # at <service-name>.railway.internal instead of a fixed compose DNS name.
+    # This file is a template rendered by nginx's own envsubst entrypoint step
+    # (/docker-entrypoint.d/20-envsubst-on-templates.sh), which only touches
+    # names that exist as real environment variables — nginx's own $uri/$host/
+    # etc. below aren't env vars, so they pass through untouched.
+    # basic-auth.conf is generated at container start (empty if
+    # AURUM_BASIC_AUTH_USER/PASSWORD aren't set, so this is a no-op by
+    # default) — see docker-entrypoint.d/.
     location /api/ {
         include /etc/nginx/basic-auth.conf;
-        proxy_pass http://backend:8000/api/;
+        proxy_pass http://${AURUM_BACKEND_HOST}:${AURUM_BACKEND_PORT}/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
