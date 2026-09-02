@@ -1,3 +1,13 @@
+# Resolve the backend host at request time rather than once at nginx startup.
+# NGINX_LOCAL_RESOLVERS is set by the base image's own
+# docker-entrypoint.d/15-local-resolvers.envsh from the container's
+# /etc/resolv.conf. Without this, proxy_pass with a static hostname is
+# resolved once when nginx boots — on Railway that hostname
+# (<service>.railway.internal) may not exist yet at that exact moment (first
+# deploy, or backend mid-restart), which crashes nginx outright ("host not
+# found in upstream") instead of just failing the individual request.
+resolver ${NGINX_LOCAL_RESOLVERS} valid=5s;
+
 server {
     listen 80;
     server_name _;
@@ -11,7 +21,11 @@ server {
     # sets below and healthchecks would start failing with 401.
     location = /api/health {
         auth_basic off;
-        proxy_pass http://${AURUM_BACKEND_HOST}:${AURUM_BACKEND_PORT}/api/health;
+        # No path after $backend: with a variable, that means "no URI"
+        # rewriting, so nginx forwards the original request URI (already
+        # /api/health) unchanged — see the comment on the /api/ block below.
+        set $backend http://${AURUM_BACKEND_HOST}:${AURUM_BACKEND_PORT};
+        proxy_pass $backend;
         proxy_set_header Host $host;
     }
 
@@ -28,7 +42,15 @@ server {
     # default) — see docker-entrypoint.d/.
     location /api/ {
         include /etc/nginx/basic-auth.conf;
-        proxy_pass http://${AURUM_BACKEND_HOST}:${AURUM_BACKEND_PORT}/api/;
+        # $backend deliberately carries no path: per nginx docs, a proxy_pass
+        # value with no URI after the host:port passes the client's original
+        # request URI through unchanged. A static trailing "/api/" here would
+        # be fine too (it equals the location prefix, a no-op rewrite) — but
+        # that rewriting only applies to a *static* proxy_pass string. With a
+        # variable, nginx skips the rewrite and appends the trailing path
+        # literally instead, which would double it into "/api//api/...".
+        set $backend http://${AURUM_BACKEND_HOST}:${AURUM_BACKEND_PORT};
+        proxy_pass $backend;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

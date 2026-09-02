@@ -18,8 +18,15 @@ COPY docker-entrypoint.d/20-basic-auth.sh /docker-entrypoint.d/20-basic-auth.sh
 # Defaults that make docker-compose's fixed "backend" DNS name keep working
 # unchanged; override per-environment (e.g. Railway's *.railway.internal)
 # via the AURUM_BACKEND_HOST/AURUM_BACKEND_PORT service variables.
+# NGINX_ENTRYPOINT_LOCAL_RESOLVERS opts into the base image's
+# docker-entrypoint.d/15-local-resolvers.envsh, which exports
+# NGINX_LOCAL_RESOLVERS from /etc/resolv.conf for the "resolver" directive in
+# templates/default.conf.template — required for the dynamic (request-time)
+# DNS lookup that keeps nginx from crashing if AURUM_BACKEND_HOST isn't
+# resolvable yet at container startup.
 ENV AURUM_BACKEND_HOST=backend \
-    AURUM_BACKEND_PORT=8000
+    AURUM_BACKEND_PORT=8000 \
+    NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
 # sed strips any stray CR: cloned on Windows with core.autocrlf=true the
 # script arrives as CRLF, the kernel reads the shebang as "/bin/sh\r", and
 # nginx dies on boot with "not found" (exit 127). .gitattributes fixes this
